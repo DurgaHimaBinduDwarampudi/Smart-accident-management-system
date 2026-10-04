@@ -1,0 +1,10 @@
+from django.apps import AppConfig
+
+
+class AccidentAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'accident_app'
+    verbose_name = 'Accident Management'
+
+    def ready(self):
+        import accident_app.signals  # noqa

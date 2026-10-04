@@ -1,0 +1,138 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Register - Smart Accident System{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-md-6">
+        <div class="card p-4 shadow">
+            <div class="text-center mb-4">
+                <i class="fas fa-user-plus fa-3x text-danger"></i>
+                <h3 class="mt-2 fw-bold">Create Account</h3>
+                <p class="text-muted small mb-0">Your email will be used for OTP login</p>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show py-2">
+                        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" novalidate id="registerForm">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">First Name <span class="text-danger">*</span></label>
+                        {{ form.first_name }}
+                        {% if form.first_name.errors %}<div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-semibold">Last Name</label>
+                        {{ form.last_name }}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Username <span class="text-danger">*</span></label>
+                    {{ form.username }}
+                    {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Email Address <span class="text-danger">*</span></label>
+                    {{ form.email }}
+                    {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Mobile Number <span class="text-danger">*</span>
+                    </label>
+                    {{ form.phone_number }}
+                    <div class="form-text text-muted">Enter 10-digit number without country code.</div>
+                    {% if form.phone_number.errors %}<div class="text-danger small mt-1">{{ form.phone_number.errors.0 }}</div>{% endif %}
+                </div>
+
+                <!-- Password with show/hide toggle -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        {{ form.password }}
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePwd('id_password', this)">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    {% if form.password.errors %}<div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>{% endif %}
+                </div>
+
+                <!-- Confirm Password with show/hide toggle and live match indicator -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Confirm Password <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        {{ form.confirm_password }}
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePwd('id_confirm_password', this)">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div id="pwd-match-msg" class="small mt-1" style="display:none;"></div>
+                    {% if form.confirm_password.errors %}<div class="text-danger small mt-1">{{ form.confirm_password.errors.0 }}</div>{% endif %}
+                </div>
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger py-2">
+                        {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+                    </div>
+                {% endif %}
+
+                <button type="submit" class="btn btn-danger w-100 py-2 fw-bold mt-2" id="submitBtn">
+                    <i class="fas fa-user-plus me-2"></i>Create Account
+                </button>
+            </form>
+
+            <hr>
+            <p class="text-center mb-0">Already have an account?
+                <a href="{% url 'login' %}" class="text-danger fw-bold">Login here</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePwd(fieldId, btn) {
+    const field = document.getElementById(fieldId);
+    const icon  = btn.querySelector('i');
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        field.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+
+const pwd1 = document.getElementById('id_password');
+const pwd2 = document.getElementById('id_confirm_password');
+const msg  = document.getElementById('pwd-match-msg');
+
+function checkMatch() {
+    if (!pwd2.value) { msg.style.display = 'none'; return; }
+    msg.style.display = 'block';
+    if (pwd1.value === pwd2.value) {
+        msg.innerHTML = '<span class="text-success"><i class="fas fa-check-circle me-1"></i>Passwords match</span>';
+        pwd2.style.borderColor = '#198754';
+    } else {
+        msg.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>Passwords do not match</span>';
+        pwd2.style.borderColor = '#dc3545';
+    }
+}
+
+pwd1.addEventListener('input', checkMatch);
+pwd2.addEventListener('input', checkMatch);
+
+// Clear browser autofill on page load to avoid confusion
+window.addEventListener('load', function() {
+    pwd1.value = '';
+    pwd2.value = '';
+});
+</script>
+{% endblock %}

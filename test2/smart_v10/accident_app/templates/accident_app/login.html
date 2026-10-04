@@ -1,0 +1,70 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Login - Smart Accident System{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5 col-lg-4">
+        <div class="card p-4 shadow">
+            <div class="text-center mb-4">
+                <i class="fas fa-car-crash fa-3x text-danger"></i>
+                <h3 class="mt-2 fw-bold">Sign In</h3>
+                <p class="text-muted small mb-0">Smart Accident Management System</p>
+            </div>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show py-2 small">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Username</label>
+                    {{ form.username }}
+                    {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Password</label>
+                    <div class="input-group">
+                        {{ form.password }}
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePwd()">
+                            <i class="fas fa-eye" id="pwd-icon"></i>
+                        </button>
+                    </div>
+                    {% if form.password.errors %}<div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>{% endif %}
+                </div>
+                <button type="submit" class="btn btn-danger w-100 py-2 fw-bold">
+                    <i class="fas fa-sign-in-alt me-2"></i>Login
+                </button>
+            </form>
+
+            <div class="alert alert-light border mt-3 mb-0 py-2 small text-center text-muted">
+                <i class="fas fa-shield-alt text-danger me-1"></i>
+                After login, an OTP will be sent to your registered mobile (SMS) or email for verification.
+            </div>
+
+            <hr>
+            <p class="text-center mb-0 small">
+                Don't have an account?
+                <a href="{% url 'register' %}" class="text-danger fw-bold">Register here</a>
+            </p>
+        </div>
+    </div>
+</div>
+<script>
+function togglePwd() {
+    const field = document.getElementById('id_password');
+    const icon  = document.getElementById('pwd-icon');
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        field.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+</script>
+{% endblock %}

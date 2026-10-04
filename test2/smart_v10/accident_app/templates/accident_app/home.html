@@ -1,0 +1,65 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Home - Smart Accident Management System{% endblock %}
+{% block content %}
+<!-- Hero -->
+<div class="row align-items-center py-5">
+    <div class="col-lg-6">
+        <h1 class="display-4 fw-bold text-danger">Smart Accident Management</h1>
+        <h2 class="h4 text-secondary mb-4">& Emergency Response System</h2>
+        <p class="lead text-muted">Immediate assistance during road accidents — AI damage analysis, insurance integration, emergency alerts, and nearby services — all in one platform.</p>
+        <div class="d-flex gap-3 mt-4">
+            <a href="{% url 'register' %}" class="btn btn-danger btn-lg px-4"><i class="fas fa-user-plus me-2"></i>Get Started</a>
+            <a href="{% url 'login' %}" class="btn btn-outline-secondary btn-lg px-4"><i class="fas fa-sign-in-alt me-2"></i>Login</a>
+        </div>
+    </div>
+    <div class="col-lg-6 text-center mt-4 mt-lg-0">
+        <i class="fas fa-car-crash" style="font-size:10rem;color:#e63946;opacity:0.15;"></i>
+    </div>
+</div>
+
+<!-- Features -->
+<div class="row g-4 mt-3">
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-robot fa-3x text-danger mb-3"></i>
+            <h5 class="fw-bold">AI Damage Analysis</h5>
+            <p class="text-muted">Upload accident image to detect damaged vehicle parts and estimate repair costs instantly.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-shield-alt fa-3x text-primary mb-3"></i>
+            <h5 class="fw-bold">Insurance Integration</h5>
+            <p class="text-muted">Auto-detect vehicle number via OCR and fetch insurance details to calculate your payable amount.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-envelope-open-text fa-3x text-warning mb-3"></i>
+            <h5 class="fw-bold">Emergency Email Alerts</h5>
+            <p class="text-muted">Instantly notify your emergency contacts via email with accident details and location.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-hospital fa-3x text-success mb-3"></i>
+            <h5 class="fw-bold">Nearby Hospitals</h5>
+            <p class="text-muted">Find top-rated and affordable hospitals near your accident location automatically.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-tools fa-3x text-info mb-3"></i>
+            <h5 class="fw-bold">Service Centers</h5>
+            <p class="text-muted">Get recommendations for nearby vehicle service centers suitable for your vehicle type.</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 text-center p-4">
+            <i class="fas fa-map-marker-alt fa-3x text-danger mb-3"></i>
+            <h5 class="fw-bold">Location Services</h5>
+            <p class="text-muted">GPS-based location detection for accurate emergency response and service recommendations.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

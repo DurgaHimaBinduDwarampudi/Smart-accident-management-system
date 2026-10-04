@@ -1,0 +1,40 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Check Insurance{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white fw-bold"><i class="fas fa-shield-alt me-2"></i>Check Vehicle Insurance</div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Enter Vehicle Number</label>
+                        <input type="text" name="vehicle_number" value="{{ vehicle_number }}" class="form-control form-control-lg" placeholder="e.g. AP16AX1234" style="text-transform:uppercase;">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 py-2">
+                        <i class="fas fa-search me-2"></i>Search Insurance
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        {% if result %}
+        <div class="card border-success">
+            <div class="card-header bg-success text-white fw-bold"><i class="fas fa-check-circle me-2"></i>Insurance Found</div>
+            <div class="card-body">
+                <table class="table mb-0">
+                    <tr><th>Vehicle Number</th><td>{{ result.vehicle_number }}</td></tr>
+                    <tr><th>Owner Name</th><td>{{ result.owner_name }}</td></tr>
+                    <tr><th>Insurance Company</th><td>{{ result.insurance_company }}</td></tr>
+                    <tr><th>Policy Number</th><td>{{ result.policy_number }}</td></tr>
+                    <tr><th>Coverage Amount</th><td class="fw-bold text-success">₹{{ result.coverage_amount }}</td></tr>
+                    <tr><th>Valid Until</th><td>{{ result.expiry_date }}</td></tr>
+                    <tr><th>Vehicle Type</th><td>{{ result.get_vehicle_type_display }}</td></tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

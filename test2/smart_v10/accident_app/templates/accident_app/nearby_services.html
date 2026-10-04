@@ -1,0 +1,495 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Nearby Services{% endblock %}
+{% block content %}
+
+<h4 class="fw-bold mb-3">
+  <i class="fas fa-map-marker-alt text-danger me-2"></i>
+  Nearby Services — Report #{{ report.id }}
+  <small class="text-muted fs-6 ms-2">
+    {% if report.location_address %}📍 {{ report.location_address }}{% endif %}
+  </small>
+</h4>
+
+<!-- Status bar -->
+<div id="statusBar" class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+  <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+  <span id="statusMsg">Fetching nearby places from Google Maps…</span>
+</div>
+
+<!-- Results grid -->
+<div class="row g-4" id="resultsSection">
+
+  <!-- Hospitals -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-success text-white fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="fas fa-hospital me-2"></i>Nearby Hospitals &amp; Clinics</span>
+        <span id="hospitalCount" class="badge bg-white text-success">…</span>
+      </div>
+      <div id="hospitalList" class="card-body p-0">
+        <div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Searching…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Service Centers -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-bold text-white d-flex align-items-center justify-content-between" style="background:#0097a7">
+        <span><i class="fas fa-tools me-2"></i>Nearby Mechanic &amp; Service Shops</span>
+        <span id="serviceCount" class="badge bg-white" style="color:#0097a7">…</span>
+      </div>
+      <div id="serviceList" class="card-body p-0">
+        <div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Searching…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Map -->
+<div class="card mt-4 shadow-sm" id="mapCard">
+  <div class="card-header fw-bold d-flex align-items-center justify-content-between">
+    <span><i class="fas fa-map me-2"></i>Map View</span>
+    <span class="badge bg-danger">🚨 Accident Location</span>
+  </div>
+  <div class="card-body p-0">
+    <div id="map" style="height:450px;width:100%;border-radius:0 0 .5rem .5rem;"></div>
+  </div>
+</div>
+
+<div class="mt-3 d-flex gap-2">
+  <a href="{% url 'view_result' report.id %}" class="btn btn-outline-secondary">
+    <i class="fas fa-arrow-left me-2"></i>Back to Report
+  </a>
+  <button class="btn btn-outline-primary" onclick="startSearch()">
+    <i class="fas fa-sync me-2"></i>Refresh
+  </button>
+</div>
+
+<script>
+// ── Config passed from Django ───────────────────────────────────────────────
+const REPORT_LAT   = {{ lat }};
+const REPORT_LON   = {{ lon }};
+const LOCATION_LABEL = "{{ report.location_address|escapejs }}";
+const GMAPS_KEY    = "{{ google_maps_api_key|escapejs }}";
+
+const HAS_GMAPS_KEY = GMAPS_KEY && GMAPS_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY';
+
+// ── State ───────────────────────────────────────────────────────────────────
+let gmap = null;
+let placesService = null;
+let mapMarkers = [];
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function setStatus(msg, type='info', loading=false) {
+  const bar = document.getElementById('statusBar');
+  bar.className = `alert alert-${type} py-2 mb-3 d-flex align-items-center gap-2`;
+  bar.innerHTML = loading
+    ? `<div class="spinner-border spinner-border-sm text-${type}" role="status"></div><span>${msg}</span>`
+    : `<i class="fas fa-${type==='success'?'check-circle':type==='danger'?'exclamation-circle':'info-circle'} me-1"></i><span>${msg}</span>`;
+}
+
+function kmAway(lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - REPORT_LAT) * Math.PI/180;
+  const dLon = (lon2 - REPORT_LON) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(REPORT_LAT*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))).toFixed(1);
+}
+
+function starRating(rating) {
+  if (!rating) return '';
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+  return '<span class="text-warning">'
+    + '★'.repeat(full) + (half?'½':'') + '<span class="text-secondary">' + '★'.repeat(empty) + '</span></span>'
+    + ` <small class="text-muted">${rating.toFixed(1)}</small>`;
+}
+
+// ── Render a place card ─────────────────────────────────────────────────────
+function renderCard(place, type) {
+  const isH = type === 'hospital';
+  const accent = isH ? 'success' : 'cyan';
+  const accentHex = isH ? '#198754' : '#0097a7';
+  const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&destination_place_id=${place.place_id||''}`;
+  const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
+  const km = kmAway(place.lat, place.lng);
+  const openBadge = place.open_now === true
+    ? `<span class="badge bg-success ms-1">Open</span>`
+    : place.open_now === false
+      ? `<span class="badge bg-danger ms-1">Closed</span>`
+      : '';
+
+  return `
+  <div class="p-3 border-bottom hover-bg">
+    <div class="d-flex justify-content-between align-items-start">
+      <div style="flex:1;min-width:0;padding-right:8px">
+        <h6 class="fw-bold mb-1" style="color:#212529">
+          ${place.name}${openBadge}
+        </h6>
+        <small class="text-muted d-block">
+          <i class="fas fa-map-pin me-1" style="color:${accentHex}"></i>${place.address}
+        </small>
+        <small class="text-muted d-block mt-1">
+          <i class="fas fa-route me-1"></i>${km} km away
+          ${place.rating ? ' &nbsp;|&nbsp; ' + starRating(place.rating) : ''}
+          ${place.user_ratings_total ? ` <span class="text-muted">(${place.user_ratings_total} reviews)</span>` : ''}
+        </small>
+        ${place.phone ? `<small class="d-block mt-1" style="color:${accentHex}">
+          <i class="fas fa-phone me-1"></i>
+          <a href="tel:${place.phone}" class="text-decoration-none fw-semibold" style="color:${accentHex}">${place.phone}</a>
+        </small>` : ''}
+      </div>
+    </div>
+    <div class="mt-2 d-flex gap-2 flex-wrap">
+      <a href="${dirUrl}" target="_blank" class="btn btn-sm btn-outline-${isH?'success':'info'}">
+        <i class="fas fa-directions me-1"></i>Get Directions
+      </a>
+      <a href="${mapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary">
+        <i class="fab fa-google me-1"></i>View on Maps
+      </a>
+      ${place.phone ? `<a href="tel:${place.phone}" class="btn btn-sm text-white" style="background:${accentHex}">
+        <i class="fas fa-phone me-1"></i>Call
+      </a>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Fallback card links when zero results ───────────────────────────────────
+function renderHospitalFallback(lat, lon) {
+  const q = encodeURIComponent(`hospitals near ${LOCATION_LABEL || lat+','+lon}`);
+  return `<div class="p-4 text-center text-muted">
+    <i class="fas fa-info-circle fs-4 mb-2 d-block text-secondary"></i>
+    <p class="mb-2">No hospitals found in search radius.</p>
+    <a href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank"
+       class="btn btn-outline-success btn-sm">
+      <i class="fab fa-google me-1"></i>Search Hospitals on Google Maps
+    </a>
+  </div>`;
+}
+
+function renderServiceFallback(lat, lon) {
+  const loc = LOCATION_LABEL || `${lat},${lon}`;
+  return `<div class="p-4 text-center text-muted">
+    <i class="fas fa-tools fs-4 mb-2 d-block text-secondary"></i>
+    <p class="mb-2">No mechanic shops found in this area. Try these Google Maps searches:</p>
+    <div class="d-flex flex-column gap-2 align-items-center">
+      <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('car repair garage near '+loc)}"
+         target="_blank" class="btn btn-sm btn-outline-info w-100">
+        <i class="fas fa-car me-1"></i>Car Repair / Garage
+      </a>
+      <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('bike motorcycle repair near '+loc)}"
+         target="_blank" class="btn btn-sm btn-outline-info w-100">
+        <i class="fas fa-motorcycle me-1"></i>Bike / Motorcycle Repair
+      </a>
+      <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('auto service center near '+loc)}"
+         target="_blank" class="btn btn-sm btn-outline-info w-100">
+        <i class="fas fa-tools me-1"></i>Auto Service Center
+      </a>
+      <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('tyre puncture shop near '+loc)}"
+         target="_blank" class="btn btn-sm btn-outline-secondary w-100">
+        <i class="fas fa-circle me-1"></i>Tyre / Puncture Shop
+      </a>
+    </div>
+  </div>`;
+}
+
+// ── Google Maps initialisation ──────────────────────────────────────────────
+function initGoogleMap(lat, lon) {
+  const center = { lat, lng: lon };
+  gmap = new google.maps.Map(document.getElementById('map'), {
+    center,
+    zoom: 14,
+    mapTypeControl: false,
+    streetViewControl: false,
+  });
+
+  // Accident marker (red pulse)
+  new google.maps.Marker({
+    position: center,
+    map: gmap,
+    title: '🚨 Accident Location',
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 10,
+      fillColor: '#dc3545',
+      fillOpacity: 1,
+      strokeColor: '#fff',
+      strokeWeight: 2,
+    },
+    zIndex: 999,
+  }).bindPopup;
+
+  const infoWindow = new google.maps.InfoWindow({ content: `<b>🚨 Accident Location</b><br>${LOCATION_LABEL || lat.toFixed(4)+', '+lon.toFixed(4)}` });
+  const accMarker = new google.maps.Marker({ position: center, map: gmap, title: 'Accident Location',
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#dc3545', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }, zIndex: 999 });
+  accMarker.addListener('click', () => infoWindow.open(gmap, accMarker));
+  infoWindow.open(gmap, accMarker);
+
+  placesService = new google.maps.places.PlacesService(gmap);
+}
+
+function addGoogleMarker(place, type) {
+  if (!gmap) return;
+  const isH = type === 'hospital';
+  const color = isH ? '#198754' : '#0097a7';
+  const marker = new google.maps.Marker({
+    position: { lat: place.lat, lng: place.lng },
+    map: gmap,
+    title: place.name,
+    icon: {
+      path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+      scale: 6,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#fff',
+      strokeWeight: 1,
+    },
+  });
+  const info = new google.maps.InfoWindow({
+    content: `<b>${place.name}</b><br><small>${place.address}</small>${place.phone ? `<br><a href="tel:${place.phone}">${place.phone}</a>` : ''}`,
+  });
+  marker.addListener('click', () => info.open(gmap, marker));
+  mapMarkers.push(marker);
+}
+
+// ── Google Places Nearby Search ─────────────────────────────────────────────
+function googlePlacesSearch(lat, lon, type, keyword, radius, limit) {
+  return new Promise((resolve) => {
+    if (!placesService) { resolve([]); return; }
+    const request = {
+      location: new google.maps.LatLng(lat, lon),
+      radius,
+      type,
+      keyword,
+    };
+    placesService.nearbySearch(request, (results, status) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+        resolve(results.slice(0, limit).map(p => ({
+          name: p.name,
+          address: p.vicinity || '',
+          lat: p.geometry.location.lat(),
+          lng: p.geometry.location.lng(),
+          open_now: p.opening_hours ? p.opening_hours.open_now : null,
+          rating: p.rating || null,
+          user_ratings_total: p.user_ratings_total || null,
+          place_id: p.place_id,
+          phone: '',
+        })));
+      } else {
+        resolve([]);
+      }
+    });
+  });
+}
+
+// Deduplicate by place_id or (name+address)
+function dedup(list) {
+  const seen = new Set();
+  return list.filter(p => {
+    const key = p.place_id || (p.name + '|' + p.address);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// ── Overpass fallback (when no Google Maps key) ─────────────────────────────
+async function overpassQuery(lat, lon, tags, radius) {
+  const tagFilters = tags.map(t => {
+    const [k, v] = t.split('=');
+    return `  node["${k}"="${v}"](around:${radius},${lat},${lon});\n  way["${k}"="${v}"](around:${radius},${lat},${lon});`;
+  }).join('\n');
+  const query = `[out:json][timeout:25];\n(\n${tagFilters}\n);\nout center 10;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', body: 'data=' + encodeURIComponent(query),
+  });
+  if (!res.ok) throw new Error('Overpass failed: ' + res.status);
+  return res.json();
+}
+
+function parseOverpass(elements) {
+  return elements.map(el => {
+    const tags = el.tags || {};
+    const lat = el.type === 'way' ? el.center?.lat : el.lat;
+    const lon = el.type === 'way' ? el.center?.lon : el.lon;
+    const name = tags.name || tags['name:en'] || '';
+    if (!name || !lat || !lon) return null;
+    const addrParts = [tags['addr:housenumber'], tags['addr:street'],
+      tags['addr:suburb'] || tags['addr:village'] || tags['addr:town'] || tags['addr:city']].filter(Boolean);
+    return { name, address: addrParts.join(', ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+      lat, lng: lon, phone: tags.phone || tags['contact:phone'] || '', open_now: null, rating: null, place_id: String(el.id) };
+  }).filter(Boolean);
+}
+
+// ── Main search orchestrator ────────────────────────────────────────────────
+async function startSearch() {
+  // Reset UI
+  mapMarkers.forEach(m => m.setMap ? m.setMap(null) : null);
+  mapMarkers = [];
+  document.getElementById('hospitalList').innerHTML = '<div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Searching…</div>';
+  document.getElementById('serviceList').innerHTML  = '<div class="p-4 text-center text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Searching…</div>';
+  document.getElementById('hospitalCount').textContent = '…';
+  document.getElementById('serviceCount').textContent  = '…';
+  setStatus('Searching hospitals and mechanic/repair shops within 50–70 km near accident location…', 'info', true);
+
+  let lat = REPORT_LAT, lon = REPORT_LON;
+
+  // Geocode if coordinates missing
+  if (!lat || !lon || (Math.abs(lat) < 0.001 && Math.abs(lon) < 0.001)) {
+    if (LOCATION_LABEL) {
+      try {
+        const geo = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(LOCATION_LABEL)}&format=json&limit=1`).then(r=>r.json());
+        if (geo.length) { lat = parseFloat(geo[0].lat); lon = parseFloat(geo[0].lon); }
+      } catch(e) { console.warn('Geocode failed', e); }
+    }
+    if (!lat || !lon) {
+      setStatus('No location coordinates found. Please add a location to the report.', 'danger');
+      document.getElementById('hospitalList').innerHTML = renderHospitalFallback(lat, lon);
+      document.getElementById('serviceList').innerHTML  = renderServiceFallback(lat, lon);
+      document.getElementById('hospitalCount').textContent = 0;
+      document.getElementById('serviceCount').textContent  = 0;
+      return;
+    }
+  }
+
+  let hospitals = [], services = [];
+
+  if (HAS_GMAPS_KEY && placesService) {
+    // ── Google Places path (most reliable) ────────────────────────────────
+    setStatus('Searching Google Maps for hospitals…', 'info', true);
+    try {
+      const [h1, h2] = await Promise.all([
+        googlePlacesSearch(lat, lon, 'hospital', '', 70000, 15),
+        googlePlacesSearch(lat, lon, 'health', 'clinic pharmacy', 70000, 10),
+      ]);
+      hospitals = dedup([...h1, ...h2]);
+    } catch(e) { console.warn('Google hospitals failed', e); }
+
+    setStatus('Searching Google Maps for mechanic shops…', 'info', true);
+    try {
+      // Run multiple targeted searches and merge
+      // 70 km radius — mechanic/garage shops only, no petrol bunks
+      const [s1, s2, s3] = await Promise.all([
+        googlePlacesSearch(lat, lon, 'car_repair', 'car repair garage mechanic', 70000, 12),
+        googlePlacesSearch(lat, lon, 'car_repair', 'bike motorcycle repair', 70000, 12),
+        googlePlacesSearch(lat, lon, 'car_repair', 'auto service workshop tyre', 70000, 10),
+      ]);
+      services = dedup([...s1, ...s2, ...s3]);
+    } catch(e) { console.warn('Google services failed', e); }
+
+  } else {
+    // ── Overpass fallback ─────────────────────────────────────────────────
+    setStatus('Searching OpenStreetMap for nearby places…', 'info', true);
+    try {
+      const hData = await overpassQuery(lat, lon, [
+        'amenity=hospital','amenity=clinic','amenity=doctors',
+        'amenity=health_post','healthcare=hospital','healthcare=clinic',
+        'healthcare=centre','amenity=pharmacy',
+      ], 70000);  // 70 km for hospitals
+      hospitals = parseOverpass(hData.elements || []);
+    } catch(e) { console.warn('Overpass hospitals failed', e); }
+
+    try {
+      // Only genuine repair/garage shops — NO petrol bunks
+      const sData = await overpassQuery(lat, lon, [
+        'shop=car_repair',
+        'amenity=car_repair',
+        'shop=motorcycle_repair',
+        'craft=car_repair',
+        'craft=motorcycle_repair',
+        'shop=vehicle',
+        'shop=tyres',
+        'shop=auto_parts',
+        'shop=garage',
+        'craft=mechanic',
+      ], 70000);  // 70 km radius
+      services = parseOverpass(sData.elements || []);
+    } catch(e) {
+      console.warn('Overpass services failed', e);
+      setStatus('OpenStreetMap search unavailable. Add a Google Maps API key for reliable results.', 'warning');
+    }
+  }
+
+  // Sort by distance
+  const dist = (p) => { const d = p.lat-lat, e = p.lng-lon; return d*d+e*e; };
+  hospitals.sort((a,b) => dist(a)-dist(b));
+  services.sort((a,b) => dist(a)-dist(b));
+
+  // Render hospitals
+  const hList = document.getElementById('hospitalList');
+  document.getElementById('hospitalCount').textContent = hospitals.length;
+  hList.innerHTML = hospitals.length
+    ? hospitals.map(h => renderCard(h, 'hospital')).join('')
+    : renderHospitalFallback(lat, lon);
+
+  // Render services
+  const sList = document.getElementById('serviceList');
+  document.getElementById('serviceCount').textContent = services.length;
+  sList.innerHTML = services.length
+    ? services.map(s => renderCard(s, 'service')).join('')
+    : renderServiceFallback(lat, lon);
+
+  // Add map markers
+  hospitals.forEach(h => addGoogleMarker(h, 'hospital'));
+  services.forEach(s => addGoogleMarker(s, 'service'));
+
+  const src = HAS_GMAPS_KEY ? 'Google Maps' : 'OpenStreetMap';
+  const total = hospitals.length + services.length;
+  setStatus(`Found ${hospitals.length} hospital(s) and ${services.length} mechanic/service shop(s) via ${src}.`, total > 0 ? 'success' : 'warning');
+}
+
+// ── Bootstrap: load Google Maps JS API then kick off search ────────────────
+function onGoogleMapsReady() {
+  initGoogleMap(REPORT_LAT || 17.385, REPORT_LON || 78.4867);
+  startSearch();
+}
+
+window.onGoogleMapsReady = onGoogleMapsReady;
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (HAS_GMAPS_KEY) {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&callback=onGoogleMapsReady`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+  } else {
+    // No API key — use Leaflet for map display + Overpass for data
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => {
+      const lat = REPORT_LAT || 17.385, lon = REPORT_LON || 78.4867;
+      const L = window.L;
+      const lmap = L.map('map').setView([lat, lon], 14);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(lmap);
+      L.marker([lat, lon]).addTo(lmap).bindPopup('<b>🚨 Accident Location</b><br>' + (LOCATION_LABEL || `${lat}, ${lon}`)).openPopup();
+
+      // Override addGoogleMarker to use Leaflet
+      window.addGoogleMarker = (place, type) => {
+        const isH = type === 'hospital';
+        const color = isH ? '#198754' : '#0097a7';
+        const icon = L.divIcon({ html: `<div style="background:${color};border:2px solid white;border-radius:3px;width:13px;height:13px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`, iconSize:[13,13], iconAnchor:[6,6] });
+        L.marker([place.lat, place.lng], { icon }).addTo(lmap)
+          .bindPopup(`<b>${place.name}</b><br><small>${place.address}</small>${place.phone?`<br><a href="tel:${place.phone}">${place.phone}</a>`:''}`);
+      };
+      startSearch();
+    };
+    document.head.appendChild(script);
+  }
+});
+</script>
+
+<style>
+.hover-bg:hover { background: #f8f9fa; transition: background .15s; }
+</style>
+
+{% endblock %}

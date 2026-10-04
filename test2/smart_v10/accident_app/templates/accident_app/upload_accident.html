@@ -1,0 +1,140 @@
+{% extends 'accident_app/base.html' %}
+{% block title %}Report Accident - Smart Accident System{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-danger text-white fw-bold">
+                <i class="fas fa-camera-retro me-2"></i>Report an Accident
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Upload a clear image of the damaged vehicle. The system will automatically detect damage, extract the number plate, and estimate repair costs.
+                </div>
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Vehicle Image *</label>
+                        {{ form.image }}
+                        <div class="form-text">Upload a clear photo showing the vehicle damage (JPG, PNG, WEBP)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Vehicle Number (Optional)</label>
+                        {{ form.vehicle_number }}
+                        <div class="form-text">Leave blank to auto-detect from image via OCR</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Accident Location</label>
+                        {{ form.location_address }}
+                        {{ form.latitude }}
+                        {{ form.longitude }}
+                        <div class="mt-2 d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="getGPSLocation()">
+                                <i class="fas fa-map-marker-alt me-1"></i>Use My GPS Location
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="geocodeAddress()">
+                                <i class="fas fa-search-location me-1"></i>Lookup Coordinates
+                            </button>
+                        </div>
+                        <div id="location-status" class="form-text mt-1"></div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Additional Notes</label>
+                        {{ form.notes }}
+                    </div>
+                    <button type="submit" class="btn btn-danger px-5 py-2 fw-bold">
+                        <i class="fas fa-upload me-2"></i>Upload & Analyze
+                    </button>
+                    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const GMAPS_API_KEY = '{{ google_maps_api_key }}';
+
+function setStatus(msg, isError) {
+    const el = document.getElementById('location-status');
+    el.innerHTML = msg;
+    el.style.color = isError ? '#dc3545' : '#198754';
+}
+
+/* GPS → reverse-geocode to human-readable address */
+function getGPSLocation() {
+    if (!navigator.geolocation) {
+        setStatus('Geolocation is not supported by your browser.', true);
+        return;
+    }
+    setStatus('<span class="spinner-border spinner-border-sm me-1"></span>Detecting GPS location…');
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            document.getElementById('id_latitude').value  = lat;
+            document.getElementById('id_longitude').value = lon;
+
+            // Try reverse geocoding if API key is set
+            if (GMAPS_API_KEY && GMAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY') {
+                fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GMAPS_API_KEY}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'OK' && data.results.length > 0) {
+                            const addr = data.results[0].formatted_address;
+                            document.getElementById('id_location_address').value = addr;
+                            setStatus(`✅ Location set: ${addr}`);
+                        } else {
+                            document.getElementById('id_location_address').value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                            setStatus(`✅ GPS coordinates captured: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+                        }
+                    })
+                    .catch(() => {
+                        document.getElementById('id_location_address').value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                        setStatus(`✅ GPS coordinates captured: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+                    });
+            } else {
+                document.getElementById('id_location_address').value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                setStatus(`✅ GPS coordinates captured: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+            }
+        },
+        function(err) {
+            setStatus('Could not get GPS location. Please type the location manually.', true);
+        }
+    );
+}
+
+/* Geocode a manually typed address → lat/lon */
+function geocodeAddress() {
+    const addr = document.getElementById('id_location_address').value.trim();
+    if (!addr) {
+        setStatus('Please type a location in the field above first.', true);
+        return;
+    }
+    if (!GMAPS_API_KEY || GMAPS_API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY') {
+        setStatus('Google Maps API key not configured. Coordinates cannot be auto-filled.', true);
+        return;
+    }
+    setStatus('<span class="spinner-border spinner-border-sm me-1"></span>Looking up coordinates…');
+    fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${GMAPS_API_KEY}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'OK' && data.results.length > 0) {
+                const loc = data.results[0].geometry.location;
+                document.getElementById('id_latitude').value  = loc.lat;
+                document.getElementById('id_longitude').value = loc.lng;
+                // Update address with full formatted version
+                document.getElementById('id_location_address').value = data.results[0].formatted_address;
+                setStatus(`✅ Coordinates found: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`);
+            } else {
+                setStatus('Could not find coordinates for that address. Try a more specific location.', true);
+            }
+        })
+        .catch(() => {
+            setStatus('Location lookup failed. Please check your internet connection.', true);
+        });
+}
+</script>
+{% endblock %}
